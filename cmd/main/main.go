@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	postgres "goproject/internal/storage/postres"
+	"goproject/internal/storage/postres/models"
 	"log"
 )
 
@@ -19,20 +20,18 @@ func main() {
 	if err := storage.Init(ctx); err != nil {
 		log.Fatalf("failed to init storage: %v", err)
 	}
+ы
+	devService := .NewDeveloperService(storage)
 
-	// Тут нужно save поменять, ибо мы в там его поменяли
-	id, err := storage.Save(ctx, "test data")
-	if err != nil {
-		log.Printf("failed to save: %v", err)
-	} else {
-		log.Printf("saved with id: %d", id)
+	// Создание разработчика
+	dev := models.Developer{
+		Firstname: "John",
+		LastName:  "Doe",
 	}
 
-	// Пример получения данных
-	record, err := storage.GetByID(ctx, id)
-	if err != nil {
-		log.Printf("failed to get record: %v", err)
-	} else {
-		log.Printf("got record: %+v", record)
+	if err := devService.CreateDeveloper(context.Background(), &dev); err != nil {
+		log.Fatal("Failed to create developer:", err)
 	}
+
+	log.Println("Developer created successfully!")
 }

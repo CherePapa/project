@@ -4,9 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"goproject/internal/storage"
 	"goproject/internal/storage/postres/models"
-	"time"
 
 	_ "github.com/lib/pq"
 )
@@ -28,134 +26,63 @@ func New(connString string) (*PostgresStorage, error) {
 // Init создает таблицу если ее нет
 func (s *PostgresStorage) Init(ctx context.Context) error {
 	query := `
-		CREATE TABLE IF NOT EXISTS records (
-			id SERIAL PRIMARY KEY,
-			data TEXT NOT NULL,
-			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-		)
-	`
+        BEGIN;
+        
+        CREATE TABLE IF NOT EXISTS developers (
+            id SERIAL PRIMARY KEY,
+            firstname VARCHAR(64) NOT NULL,
+            last_name VARCHAR(64) NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            modified_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            deleted_at TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS projects (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(64) NOT NULL,
+            description VARCHAR(64) NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            modified_at TIMESTAMP NOT NULL DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS reports (
+            id SERIAL PRIMARY KEY,
+            developer_id INTEGER NOT NULL REFERENCES developers(id) ON DELETE CASCADE,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS tasks (
+            id SERIAL PRIMARY KEY,
+            report_id INTEGER NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+            project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            developer_note TEXT,
+            estimate_planed INTEGER NOT NULL,
+            estimate_progress INTEGER NOT NULL,
+            start_timestamp TIMESTAMP NOT NULL,
+            end_timestamp TIMESTAMP NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        );
+
+        COMMIT;
+    `
 
 	_, err := s.db.ExecContext(ctx, query)
 	if err != nil {
-		return fmt.Errorf("failed to create table: %w", err)
+		return fmt.Errorf("failed to initialize database: %w", err)
 	}
 
 	return nil
 }
 
-// Save сохраняет данные и возвращает ID
-func (s *PostgresStorage) Save(ctx context.Context, prj models.Project, task models.Task, rep models.Report, dev models.Developer) (int, error) {
-	// Начинаем транзакцию
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback() // Откатываем при ошибке
-
-	// 1. Сохраняем разработчика
-	devQuery := `
-        INSERT INTO developers (firstname, last_name, created_at, modified_at)
-        VALUES ($1, $2, $3, $4)
-        RETURNING id
-    `
-	err = tx.QueryRowContext(ctx, devQuery,
-		dev.Firstname,
-		dev.LastName,
-		time.Now(), // CreatedAt
-		time.Now(), // ModifiedAt
-	).Scan(&dev.ID)
-	if err != nil {
-		return 0, fmt.Errorf("failed to save developer: %w", err)
-	}
-
-	// 2. Сохраняем проект
-	prjQuery := `
-        INSERT INTO projects (name, description, created_at, modified_at)
-        VALUES ($1, $2, $3, $4)
-        RETURNING id
-    `
-	err = tx.QueryRowContext(ctx, prjQuery,
-		prj.Name,
-		prj.Description,
-		time.Now(), // CreatedAt
-		time.Now(), // ModifiedAt
-	).Scan(&prj.ID)
-	if err != nil {
-		return 0, fmt.Errorf("failed to save project: %w", err)
-	}
-
-	// 3. Сохраняем отчет
-	repQuery := `
-        INSERT INTO reports (developer_id, created_at)
-        VALUES ($1, $2)
-        RETURNING id
-    `
-	err = tx.QueryRowContext(ctx, repQuery,
-		dev.ID,     // Связь с разработчиком
-		time.Now(), // CreatedAt
-	).Scan(&rep.ID)
-	if err != nil {
-		return 0, fmt.Errorf("failed to save report: %w", err)
-	}
-
-	// 4. Сохраняем задачу
-	taskQuery := `
-        INSERT INTO tasks (
-            report_id, project_id, name, developer_note,
-            estimate_planed, estimate_progress,
-            start_timestamp, end_timestamp, created_at
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        RETURNING id
-    `
-	err = tx.QueryRowContext(ctx, taskQuery,
-		rep.ID, // Связь с отчетом
-		prj.ID, // Связь с проектом
-		task.Name,
-		task.DeveloperNote,
-		task.EstimatePlaned,
-		task.EstimateProgress,
-		task.StartTimestamp,
-		task.EndTimestamp,
-		time.Now(), // CreatedAt
-	).Scan(&task.ID)
-	if err != nil {
-		return 0, fmt.Errorf("failed to save task: %w", err)
-	}
-
-	// Фиксируем транзакцию
-	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	// Возвращаем ID задачи как результат
-	return int(task.ID), nil
-}
-
-// GetByID возвращает запись по ID
-func (s *PostgresStorage) GetByID(ctx context.Context, id int) (*storage.Record, error) {
+func (s *PostgresStorage) SaveDeveloper(ctx context.Context, dev *models.Developer) error {
 	query := `
-		SELECT id, data, created_at
-		FROM records
-		WHERE id = $1
-	`
-
-	var record storage.Record
-	err := s.db.QueryRowContext(ctx, query, id).Scan(
-		&record.ID,
-		&record.Data,
-		&record.Time,
-	)
-
-	if err == sql.ErrNoRows {
-		return nil, storage.ErrNotFound
-	}
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to get record: %w", err)
-	}
-
-	return &record, nil
+        INSERT INTO developers (firstname, last_name) 
+        VALUES ($1, $2)
+        RETURNING id, created_at, modified_at
+    `
+	return s.db.QueryRowContext(ctx, query, dev.Firstname, dev.LastName).
+		Scan(&dev.ID, &dev.CreatedAt, &dev.ModifiedAt)
 }
 
 // Close закрывает соединение с БД

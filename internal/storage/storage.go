@@ -2,18 +2,22 @@ package storage
 
 import (
 	"context"
-	"time"
+	"goproject/internal/storage/postres/models"
 )
 
-type Record struct {
-	ID   int
-	Data string
-	Time time.Time
+type DeveloperStorage interface {
+	SaveDeveloper(ctx context.Context, dev *models.Developer) error
+	GetDeveloper(ctx context.Context, id uint) (*models.Developer, error)
 }
 
-type Storage interface {
-	Init(ctx context.Context) error
-	Save(ctx context.Context, data string) (int, error)
-	GetByID(ctx context.Context, id int) (*Record, error)
-	Close() error
+type ReportRepository interface {
+	SaveReport(ctx context.Context, rep *models.Report) error
+}
+
+type TaskRepository interface {
+	SaveTask(ctx context.Context, task *models.Task) error
+}
+
+type ProjectRepository interface {
+	SaveProject(ctx context.Context, prj *models.Project) error
 }
