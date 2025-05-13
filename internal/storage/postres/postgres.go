@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"goproject/internal/storage/postres/models"
 
@@ -83,6 +84,39 @@ func (s *PostgresStorage) SaveDeveloper(ctx context.Context, dev *models.Develop
     `
 	return s.db.QueryRowContext(ctx, query, dev.Firstname, dev.LastName).
 		Scan(&dev.ID, &dev.CreatedAt, &dev.ModifiedAt)
+}
+
+func (s *PostgresStorage) GetDeveloper(ctx context.Context, id uint) (*models.Developer, error) {
+	query := `
+        SELECT 
+            id, 
+            firstname, 
+            last_name, 
+            created_at, 
+            modified_at, 
+            deleted_at 
+        FROM developers 
+        WHERE id = $1
+    `
+
+	var dev models.Developer
+	err := s.db.QueryRowContext(ctx, query, id).Scan(
+		&dev.ID,
+		&dev.Firstname,
+		&dev.LastName,
+		&dev.CreatedAt,
+		&dev.ModifiedAt,
+		&dev.DeletedAt,
+	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("разработчик с ID %d не найден", id)
+		}
+		return nil, fmt.Errorf("ошибка при получении разработчика: %w", err)
+	}
+
+	return &dev, nil
 }
 
 // Close закрывает соединение с БД

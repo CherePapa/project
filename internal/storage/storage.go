@@ -21,3 +21,7 @@ type TaskRepository interface {
 type ProjectRepository interface {
 	SaveProject(ctx context.Context, prj *models.Project) error
 }
+
+type Storage interface {
+	Init(ctx context.Context) error
+}
